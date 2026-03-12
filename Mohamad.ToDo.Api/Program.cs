@@ -63,6 +63,13 @@ builder.Services.AddApiVersioning(options =>
 })
 .AddMvc();
 
+builder.Services.AddAuthorization(options =>
+{
+    //we have to have existing claim
+    options.AddPolicy("GeneralPolicy",
+        policy => policy.RequireClaim("claimOneKey"));
+});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

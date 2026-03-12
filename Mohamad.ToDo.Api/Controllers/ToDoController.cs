@@ -25,6 +25,7 @@ namespace Mohamad.ToDo.Api.Controllers
         }
 
         [HttpPost]
+        [Authorize(Policy = "GeneralPolicy")]
         public async Task<ActionResult<ItemData>> AddItem(ItemData item)
         {
             if(ModelState.IsValid)
