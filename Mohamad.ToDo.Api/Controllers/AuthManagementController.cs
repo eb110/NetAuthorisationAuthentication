@@ -337,8 +337,6 @@ namespace Mohamad.ToDo.Api.Controllers
         //remember -> this is the set of claims that will end up in jwt token
         private async Task<List<Claim>> GetAllValidClaims(IdentityUser user)
         {
-            var _options = new IdentityOptions();
-
             //default set of claims for the user
             //every user have to have it - at least in this project
             var claims = new List<Claim>()
