@@ -1,8 +1,6 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Mohamad.ToDo.Api.Configuration;
@@ -26,17 +24,24 @@ namespace Mohamad.ToDo.Api.Controllers
         private readonly JwtConfig _jwtConfig;
         private readonly TokenValidationParameters _tokenValidationParameters;
         private readonly ApiDbContext _dbContext;
+        private readonly RoleManager<IdentityRole> _roleManager;
+        private readonly ILogger<AuthManagementController> _logger;
 
         public AuthManagementController(
             UserManager<IdentityUser> userManager, 
             IOptionsMonitor<JwtConfig> optionsMonitor,
             TokenValidationParameters tokenValidationParameters,
+            RoleManager<IdentityRole> roleManager,
+            ILogger<AuthManagementController> logger,
             ApiDbContext apiDbContext)
         {
             _userManager = userManager;
+            //appsettings
             _jwtConfig = optionsMonitor.CurrentValue;
             _tokenValidationParameters = tokenValidationParameters;
             _dbContext = apiDbContext;
+            _roleManager = roleManager;
+            _logger = logger;
         }
 
         [HttpPost]
@@ -66,6 +71,9 @@ namespace Mohamad.ToDo.Api.Controllers
                 var isCreated = await _userManager.CreateAsync(newUser, user.Password);
                 if(isCreated.Succeeded)
                 {
+                    //add user to the role => the role has to exist
+                    var resultRoleAddition = await _userManager.AddToRoleAsync(newUser, "AppUser");
+
                     var jwtToken = await GenerateJwtToken(newUser);
 
                     return Ok(jwtToken);
@@ -282,19 +290,12 @@ namespace Mohamad.ToDo.Api.Controllers
         {
             var jwtTokenHandler = new JwtSecurityTokenHandler();
             var key = Encoding.ASCII.GetBytes(_jwtConfig.Secret);
+            var claims = await GetAllValidClaims(user);
             var tokenDescriptor = new SecurityTokenDescriptor
             {
-                Subject = new ClaimsIdentity(
-                [
-                    new Claim("Id", user.Id),
-                    new Claim(JwtRegisteredClaimNames.Email, user.Email!),
-                    new Claim(JwtRegisteredClaimNames.Sub, user.Email!),
-                    //required for the refresh token process
-                    //it has to be unique for the current user as it will be validate 
-                    //if the token expires and user have to refresh it
-                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-                ]),
-                Expires = DateTime.UtcNow.AddSeconds(30),
+                //very important step => get all claims / rule claims / default claims
+                Subject = new ClaimsIdentity(claims),
+                Expires = DateTime.UtcNow.AddDays(1),
                 SigningCredentials = new SigningCredentials(
                     new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
             };
@@ -331,6 +332,55 @@ namespace Mohamad.ToDo.Api.Controllers
             var random = new Random();
             var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
             return new string(Enumerable.Repeat(chars, length).Select(x => x[random.Next(x.Length)]).ToArray());
+        }
+
+        //remember -> this is the set of claims that will end up in jwt token
+        private async Task<List<Claim>> GetAllValidClaims(IdentityUser user)
+        {
+            var _options = new IdentityOptions();
+
+            //default set of claims for the user
+            //every user have to have it - at least in this project
+            var claims = new List<Claim>()
+            {
+                  new Claim("Id", user.Id),
+                  new Claim(JwtRegisteredClaimNames.Email, user.Email!),
+                  new Claim(JwtRegisteredClaimNames.Sub, user.Email!),
+                    //required for the refresh token process
+                    //it has to be unique for the current user as it will be validate 
+                    //if the token expires and user have to refresh it
+                  new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            };
+
+            //Main task - add all user claims and all user role claims to claims list
+            //attach the list to jwt
+
+            //extra set of claims from the actual user
+            var userClaims = await _userManager.GetClaimsAsync(user);
+            //add claims to default set
+            claims.AddRange(userClaims);
+
+            //get the user roles and add it to the claims
+            var userRoles = await _userManager.GetRolesAsync(user);
+            //parse roles to claims
+            foreach(var userRole in userRoles)
+            {             
+                var role = await _roleManager.FindByNameAsync(userRole);
+
+                //role can have claims
+                if(role != null)
+                {
+                    claims.Add(new Claim(ClaimTypes.Role, userRole));
+                    var roleClaims = await _roleManager.GetClaimsAsync(role);
+                    foreach(var roleClaim in roleClaims)
+                    {
+                        claims.Add(roleClaim);
+                    }
+                }
+            }
+
+            //return final list of claims
+            return claims;
         }
     }
 }

@@ -1,4 +1,6 @@
 ﻿using Asp.Versioning;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Mohamad.ToDo.Api.Data;
@@ -11,7 +13,7 @@ namespace Mohamad.ToDo.Api.Controllers
     [Route("api/v{v:apiVersion}/todo")] // http://localhost:5000/api/v1/todo
     //[Route("api/[controller]")] // http://localhost:5000/api/todo
     [ApiController]
-    //[Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Roles = "AppUser")]
     public class ToDoController(ApiDbContext context) : ControllerBase
     {
         [MapToApiVersion(2)]
